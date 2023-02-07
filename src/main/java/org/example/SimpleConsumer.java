@@ -33,6 +33,7 @@ public class SimpleConsumer {
             for (ConsumerRecord<String, String> record : records){
                 logger.info("{}", record);
             }
+            consumer.commitSync();
         }
 
 
