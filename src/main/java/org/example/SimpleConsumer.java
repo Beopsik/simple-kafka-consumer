@@ -2,6 +2,7 @@ package org.example;
 
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,19 +24,23 @@ public class SimpleConsumer {
         configs.put(ConsumerConfig.GROUP_ID_CONFIG, GROUP_ID);
         configs.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         configs.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        configs.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
         consumer = new KafkaConsumer<>(configs);
         consumer.subscribe(Arrays.asList(TOPIC_NAME));
 
-        while (true) {
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
-            currentOffsets = new HashMap<>();
-            for (ConsumerRecord<String, String> record : records){
-                logger.info("{}", record);
-                currentOffsets.put(new TopicPartition(record.topic(), record.partition()), new OffsetAndMetadata(record.offset() + 1, null));
-                consumer.commitSync(currentOffsets);
+        try {
+            while (true) {
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+                currentOffsets = new HashMap<>();
+                for (ConsumerRecord<String, String> record : records) {
+                    logger.info("{}", record);
+                }
             }
+        } catch (WakeupException e) {
+            logger.warn("Wakeup consumer");
+            // 리소스 종료 처리
+        }finally {
+            consumer.close();
         }
 
 
@@ -51,6 +56,14 @@ public class SimpleConsumer {
         public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
             logger.warn("Partitions are revoked");
             consumer.commitSync(currentOffsets);
+        }
+    }
+
+    static class ShutdownThread extends Thread {
+        @Override
+        public void run() {
+            logger.info("Shutdown hook");
+            consumer.wakeup();
         }
     }
 }
